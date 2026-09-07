@@ -1,0 +1,46 @@
+name: Deploy Salesforce UAT
+
+on:
+  push:
+    branches:
+      - uat
+
+jobs:
+  deploy-uat:
+    runs-on: ubuntu-latest
+    environment: uat
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install Salesforce CLI
+        run: |
+          npm install -g @salesforce/cli
+          sf --version
+
+      - name: Authenticate to Salesforce UAT
+        env:
+          SF_USERNAME: ${{ secrets.SF_USERNAME }}
+          SF_CLIENT_ID: ${{ secrets.SF_CLIENT_ID }}
+          SF_JWT_KEY: ${{ secrets.SF_JWT_KEY }}
+        run: |
+          echo "$SF_JWT_KEY" > server.key
+          chmod 600 server.key
+
+          sf org login jwt \
+            --username "$SF_USERNAME" \
+            --client-id "$SF_CLIENT_ID" \
+            --jwt-key-file server.key \
+            --alias uat
+
+      - name: Deploy metadata to UAT
+        run: |
+          sf project deploy start \
+            --source-dir force-app/main/default \
+            --target-org uat \
+            --wait 30
+
+      - name: Cleanup JWT key
+        if: always()
+        run: rm -f server.key
