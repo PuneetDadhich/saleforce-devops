@@ -1,4 +1,4 @@
-name: Deploy Salesforce PROD
+name: Validate Salesforce PROD
 
 on:
   push:
@@ -7,55 +7,6 @@ on:
 
 jobs:
   validate-prod:
-    runs-on: ubuntu-latest
-
-    outputs:
-      validation-job-id: ${{ steps.validate.outputs.job-id }}
-
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-
-      - name: Install Salesforce CLI
-        run: |
-          npm install -g @salesforce/cli
-          sf --version
-
-      - name: Authenticate to Salesforce PROD
-        env:
-          SF_USERNAME: ${{ secrets.SF_USERNAME }}
-          SF_CLIENT_ID: ${{ secrets.SF_CLIENT_ID }}
-          SF_JWT_KEY: ${{ secrets.SF_JWT_KEY }}
-        run: |
-          echo "$SF_JWT_KEY" > server.key
-          chmod 600 server.key
-
-          sf org login jwt \
-            --username "$SF_USERNAME" \
-            --client-id "$SF_CLIENT_ID" \
-            --jwt-key-file server.key \
-            --alias prod
-
-      - name: Validate production deployment
-        id: validate
-        run: |
-          JOB_ID=$(sf project deploy validate \
-            --source-dir force-app/main/default \
-            --target-org prod \
-            --test-level RunRelevantTests \
-            --wait 30 \
-            --json | jq -r '.result.id')
-
-          echo "Validation Job ID: $JOB_ID"
-          echo "job-id=$JOB_ID" >> "$GITHUB_OUTPUT"
-
-      - name: Cleanup JWT key
-        if: always()
-        run: rm -f server.key
-
-
-  deploy-prod:
-    needs: validate-prod
     runs-on: ubuntu-latest
     environment: production
 
@@ -68,7 +19,7 @@ jobs:
           npm install -g @salesforce/cli
           sf --version
 
-      - name: Authenticate to Salesforce PROD
+      - name: Authenticate to Salesforce
         env:
           SF_USERNAME: ${{ secrets.SF_USERNAME }}
           SF_CLIENT_ID: ${{ secrets.SF_CLIENT_ID }}
@@ -83,11 +34,13 @@ jobs:
             --jwt-key-file server.key \
             --alias prod
 
-      - name: Quick Deploy to PROD
+      - name: Validate Production Deployment
         run: |
-          sf project deploy quick \
-            --job-id "${{ needs.validate-prod.outputs.validation-job-id }}" \
+          sf project deploy start \
+            --source-dir force-app/main/default \
             --target-org prod \
+            --dry-run \
+            --test-level RunRelevantTests \
             --wait 30
 
       - name: Cleanup JWT key
